@@ -1,0 +1,75 @@
+# ===================================================================
+# docker-compose：一键拉起「测试框架 + MySQL + Redis」依赖环境
+# 用途：本地 / CI 无外部 DB/Redis 时，快速搭建测试依赖
+# 启动：docker-compose up --abort-on-container-exit
+# ===================================================================
+version: "3.8"
+
+services:
+  # ---------- 接口自动化测试框架 ----------
+  autoapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: autoapi-test
+    # 通过环境变量切换运行环境，并传参给 run.py
+    environment:
+      - ENV=test
+      # 覆盖 config.yaml 中的 DB/Redis 指向容器内服务
+      - DB_HOST=mysql
+      - REDIS_HOST=redis
+    # 依赖 mysql/redis 先就绪（healthcheck 通过后再跑）
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # 挂载产物目录到宿主机，便于取报告与日志
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+    # 跑冒烟用例；可在此调整 --marker / --env
+    command: ["--env", "test", "--marker", "smoke"]
+
+  # ---------- MySQL 测试依赖 ----------
+  mysql:
+    image: mysql:5.7
+    container_name: autoapi-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=test_db_pass
+      - MYSQL_DATABASE=test_business
+      - MYSQL_USER=test_root
+      - MYSQL_PASSWORD=test_db_pass
+      - TZ=Asia/Shanghai
+    ports:
+      - "3307:3306"           # 宿主机 3307 避免与本地 mysql 冲突
+    # 初始化 SQL（建表 / 测试数据），如需可挂载 ./init/sql
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # - ./init/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptest_db_pass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Redis 测试依赖 ----------
+  redis:
+    image: redis:6-alpine
+    container_name: autoapi-redis
+    # 启用密码（与 config.yaml 保持一致）
+    command: ["redis-server", "--requirepass", "test_redis_pass"]
+    ports:
+      - "6380:6379"           # 宿主机 6380 避免与本地 redis 冲突
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "test_redis_pass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+# 持久化卷
+volumes:
+  mysql_data:
+  redis_data:
