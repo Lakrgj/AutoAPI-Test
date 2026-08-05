@@ -1,0 +1,106 @@
+# ===================================================================
+# 订单接口用例数据
+# - scene: create(正向下单) / negative(异常下单)
+# - marks: 用例标记
+# - db_assert:    数据库断言（SQL + 期望字段值），args 由用例注入 order_no
+# - redis_assert: Redis 断言（key 存在性 / 值比对）
+# ===================================================================
+
+# ---------- 正向下单（主流程 P0，含 DB + Redis 双重断言）----------
+- case_name: 正向下单-库存充足创建订单
+  scene: create
+  marks: [smoke, p0, db_check, redis_check]
+  request:
+    method: POST
+    url: /api/v1/order/create
+    json:
+      sku_id: 1001
+      quantity: 2
+      address_id: 8888
+      client_order_no: "AUTO_${env.RUN_ID:default}"   # 幂等单号，支持环境变量默认值
+  assert:
+    status_code: 200
+    code: 0
+    msg: success
+    jsonpath:
+      $.data.order_no: not_null
+      $.data.status: CREATED
+  extract:
+    order_no: $.data.order_no
+  # 数据库断言：下单后订单落库，状态为 CREATED
+  db_assert:
+    sql: "SELECT status, sku_id, quantity FROM t_order WHERE order_no = %s"
+    expected:
+      status: CREATED
+      sku_id: 1001
+      quantity: 2
+  # Redis 断言：库存缓存 key 存在（下单会刷新库存缓存）
+  redis_assert:
+    key: "stock:1001"
+    exists: true
+
+# ---------- 异常下单场景（参数化）----------
+
+# 1. 库存不足
+- case_name: 库存不足-下单失败
+  scene: negative
+  marks: [p1, regression]
+  request:
+    method: POST
+    url: /api/v1/order/create
+    json:
+      sku_id: 1001
+      quantity: 999999          # 远超库存
+      address_id: 8888
+  assert:
+    status_code: 200
+    code: 5001
+    msg: re:.*库存.*
+
+# 2. 商品下架
+- case_name: 商品下架-下单失败
+  scene: negative
+  marks: [p1, regression]
+  request:
+    method: POST
+    url: /api/v1/order/create
+    json:
+      sku_id: 2002              # 已下架商品
+      quantity: 1
+      address_id: 8888
+  assert:
+    status_code: 200
+    code: 5002
+    msg: re:.*下架.*
+
+# 3. 收货地址不存在
+- case_name: 收货地址不存在-下单失败
+  scene: negative
+  marks: [p2, regression]
+  request:
+    method: POST
+    url: /api/v1/order/create
+    json:
+      sku_id: 1001
+      quantity: 1
+      address_id: 0             # 不存在的地址
+  assert:
+    status_code: 200
+    code: 5003
+    msg: re:.*地址.*
+
+# 4. 购买数量非法（0 或负数）
+- case_name: 购买数量非法-参数校验失败
+  scene: negative
+  marks: [p2, regression]
+  request:
+    method: POST
+    url: /api/v1/order/create
+    json:
+      sku_id: 1001
+      quantity: 0
+      address_id: 8888
+  assert:
+    status_code: 200
+    code: 4000
+    msg: re:.*数量.*
