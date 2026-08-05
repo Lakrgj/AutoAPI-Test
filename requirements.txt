@@ -1,0 +1,35 @@
+# ===== 接口自动化测试框架依赖 =====
+# 测试引擎
+pytest==7.4.4
+pytest-rerunfailures==12.0          # 失败重试，降低不稳定用例误报
+pytest-xdist==3.5.0                 # 多进程并发执行
+pytest-html==4.1.1                  # 兜底 HTML 报告（非 allure 时）
+
+# 请求引擎
+requests==2.31.0
+urllib3==2.1.0                      # 提供 Retry 重试策略
+
+# 报告
+allure-pytest==2.13.2
+allure-python-commons==2.13.2
+
+# 数据驱动
+PyYAML==6.0.1
+openpyxl==3.1.2                     # Excel 用例数据读取
+
+# 日志
+loguru==0.7.2
+
+# 数据库 / 缓存
+pymysql==1.1.0                      # MySQL 连接
+redis==5.0.1                        # Redis 客户端
+
+# 断言
+jsonpath==0.82.2                    # jsonpath 表达式提取
+jsonschema==4.21.1                  # 接口契约校验
+
+# 通知
+dingtalk-sdk                      # 钉钉 SDK（机器人 webhook 通知；notify.py 兼容 requests 直推，可不强制安装）
+
+# 配置管理
+python-dotenv==1.0.0                # 加载 .env 环境变量
